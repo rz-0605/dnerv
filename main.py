@@ -69,7 +69,10 @@ def main(args):
 		print(f'Decoder minus Params: {params_de_}M')
 	
 	writer = SummaryWriter(os.path.join(args.output_dir, 'tensorboard_{}'.format(args.time_str)))
-	img_transform = transforms.ToTensor()
+	img_transform = transforms.Compose([
+    	transforms.CenterCrop((cfg['model']['height'], cfg['model']['width'])),  
+    	transforms.ToTensor()                
+	])
 
 	dataset_train = dataset_dict[cfg['dataset_type']](main_dir=cfg['dataset_path'], transform=img_transform,height=cfg['model']['height'],width=cfg['model']['width'], train=True)
 	dataset_val = dataset_dict[cfg['dataset_type']](main_dir=cfg['dataset_path'], transform=img_transform, height=cfg['model']['height'], width=cfg['model']['width'], train=False)

@@ -6,7 +6,7 @@ dataset_type: all
 model:
   model_name: D_NeRV
   act: gelu
-  stride_list: [[5,5],[4,4],[4,4],[3,3],[3,2]]
+  stride_list: [[5,5],[4,4],[4,4],[3,3],[2,2]] 
   kernel_list: [1, 3, 5, 5, 5]
   padding_list: [0, 1, 2, 2, 2]
   encoder_list: [5, 4, 4, 3, 2]
@@ -18,7 +18,7 @@ model:
   c1: 64
   d: 16
   c2: 92 
-  height: 960
+  height: 1080
   width: 1920
 train_batchsize: 1
 val_batchsize: 1

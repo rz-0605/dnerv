@@ -6,6 +6,24 @@ import torch.nn.functional as F
 from .model_utils import ActivationLayer
 from timm.models.layers import trunc_normal_, DropPath
 
+class PixelShuffleRect(nn.Module):
+    def __init__(self, upscale_h, upscale_w):
+        super(PixelShuffleRect, self).__init__()
+        self.upscale_h = upscale_h
+        self.upscale_w = upscale_w
+
+    def forward(self, x):
+        batch_sz, channels, in_h, in_w = x.size()
+        out_channels = channels // (self.upscale_h * self.upscale_w)
+        out_height, out_width = in_h * self.upscale_h, in_w * self.upscale_w
+
+        x = x.view(batch_sz, out_channels, self.upscale_h, self.upscale_w, in_h, in_w)
+        x = x.permute(0, 1, 4, 2, 5, 3).contiguous()
+        x = x.view(batch_sz, out_channels, out_height, out_width)
+        return x
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(upscale_h={self.upscale_h}, upscale_w={self.upscale_w})"
 
 class ConvNeXtBlock(nn.Module):
 	def __init__(self, dim, drop_path=0., layer_scale_init_value=1e-6):
@@ -60,8 +78,8 @@ class NeRV_CustomConv(nn.Module):
 		ngf, new_ngf, kernel, stride, padding = kargs['ngf'], kargs['new_ngf'], kargs['kernel'], kargs['stride'], kargs['padding']
 		self.conv_type = kargs['conv_type']
 		if self.conv_type == 'conv':
-			self.conv = nn.Conv2d(ngf, new_ngf * stride * stride, kernel, 1,  padding)
-			self.up_scale = nn.PixelShuffle(stride)
+			self.conv = nn.Conv2d(ngf, new_ngf * stride[0] * stride[1], kernel, 1,  padding)
+			self.up_scale = PixelShuffleRect(upscale_h=stride[0], upscale_w=stride[1])
 		elif self.conv_type == 'deconv':
 			self.conv = nn.ConvTranspose2d(ngf, new_ngf, stride, stride)
 			self.up_scale = nn.Identity()
@@ -88,12 +106,10 @@ class D_NeRV_Generator(nn.Module):
 	def __init__(self, cfg):
 		super().__init__()
 		self.cfg = cfg
-		self.c1_dim = cfg['c1'] #64
-		self.d_dim  = cfg['d'] #16
-		self.c2_dim = cfg['c2'] #32
+		self.c1_dim = cfg['c1']
+		self.d_dim  = cfg['d']
+		self.c2_dim = cfg['c2']
 		self.r_c    = 1.2
-		self.c_h    = int(cfg['height']/(5*4*3*2*2))
-		self.c_w    = int(cfg['width']/(5*4*3*2*2))
 
 		self.encoder_layers, self.decoder_layers, self.dec_head_layers = [nn.ModuleList() for _ in range(3)]
 		self.diff_enc_layers = nn.ModuleList()
@@ -101,11 +117,11 @@ class D_NeRV_Generator(nn.Module):
 
 		for k, stride in enumerate(cfg['encoder_list']):
 			if k == 0:
-					c0 = 3
+				c0 = 3
 			else:
 				c0 = self.c1_dim
 
-			self.encoder_layers.append(nn.Conv2d(c0, self.c1_dim, kernel_size=cfg['encoder_list'][k], stride=cfg['encoder_list'][k]))
+			self.encoder_layers.append(nn.Conv2d(c0, self.c1_dim, kernel_size=stride, stride=stride))
 			self.encoder_layers.append(LayerNorm(self.c1_dim,t_3d=False, eps=1e-6, data_format="channels_first"))
 			self.encoder_layers.append(ConvNeXtBlock(dim=self.c1_dim))
 			self.enc_embedding_layer = nn.Conv2d(self.c1_dim, self.d_dim, kernel_size=1, stride=1)
@@ -177,16 +193,22 @@ class D_NeRV_Generator(nn.Module):
 		diff = diff.view(diff.size(0),-1,diff.size(-2),diff.size(-1))
 		for diff_enc_layer in self.diff_enc_layers:
 			diff = diff_enc_layer(diff)
-		diff = self.diff_enc_ebd_layer(diff)
+
+		# cnt_output.shape = torch.Size([1, 16, 2, 4])
+		# diff.shape = torch.Size([1, 64, 40, 80]) 
+
+		diff = self.diff_enc_ebd_layer(diff) 
 		output   = self.enc_c2_layer(cnt_output)
+
+		# output.shape = torch.Size([1, 92, 2, 4])  
 
 		# ---------- decoder ---------- #
 		out_list = []
-		diff = self.diff_exc_layer(diff)
+		diff = self.diff_exc_layer(diff) 
 		for n in range(2):
 			output = self.decoder_layers[n](output)
-		output = self.decoder_layers[2](output)
-		diff = self.diff_dec_layers[0](diff)
+		output = self.decoder_layers[2](output) 
+		diff = self.diff_dec_layers[0](diff) 
 
 		p = torch.tanh(self.dec_p_c(output) + self.dec_p_d(diff))
 		s = torch.sigmoid(self.dec_s_c(output) + self.dec_s_d(diff))
