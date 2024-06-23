@@ -18,7 +18,7 @@ model:
   c1: 64
   d: 16
   c2: 92 
-  height: 1080
+  height: 960
   width: 1920
 train_batchsize: 1
 val_batchsize: 1
