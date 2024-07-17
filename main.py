@@ -116,6 +116,9 @@ def main(args):
 
 
 	start_time = datetime.now()
+	time_acc = 0
+	flops_acc = 0
+
 	for epoch in range(cfg['epoch']):
 		if args.distributed:
 			sampler_train.set_epoch(epoch)
@@ -145,8 +148,15 @@ def main(args):
 		if epoch == cfg['epoch']-1 :
 			print("Encoding time: " + str(datetime.now() - start_time))		
 
+		val_stats = evaluate(model, dataloader_val, device, cfg, args, save_images=False, Epoch=epoch)
+
+		time_acc += train_stats['train_walltime']
+		flops_acc += train_stats['train_flops']
+
+		with open(f'eval{os.environ["SLURM_JOB_ID"]}.csv', 'a') as f:
+			f.write(f"{epoch},{time_acc},{flops_acc},{val_stats['val_psnr'][-1]},{val_stats['val_msssim'][-1]}" + '\n')
+
 		if (epoch + 1) % cfg['eval_freq'] == 0 or epoch > cfg['epoch'] - 2:
-			val_stats = evaluate(model, dataloader_val, device, cfg, args, save_images=False, Epoch=epoch)
 			val_best_psnr = val_stats['val_psnr'][-1] if val_stats['val_psnr'][-1] > val_best_psnr else val_best_psnr
 			val_best_msssim = val_stats['val_msssim'][-1] if val_stats['val_msssim'][-1] > val_best_msssim else val_best_msssim
 

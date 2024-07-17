@@ -26,30 +26,39 @@ def train_one_epoch(
     psnr_list = []
     msssim_list = []
 
-    for i, data in enumerate(dataloader):
-        data = utils.to_cuda(data, device)
-        # forward pass
-        model.train()
-        output_list = model(data)
-        additional_loss_item = {}
-        if isinstance(output_list, dict):
-            for k, v in output_list.items():
-                if "loss" in k:
-                    additional_loss_item[k] = v
-            output_list = output_list["output_list"]
-        target_list = [
-            F.adaptive_avg_pool2d(data["img_gt"], x.shape[-2:]) for x in output_list
-        ]
-        loss_list = utils.loss_compute(output_list, target_list, loss_type)
-        losses = sum(loss_list)
-        if len(additional_loss_item.values()) > 0:
-            losses = losses + sum(additional_loss_item.values())
+    flops = 0
 
-        lr = utils.adjust_lr(optimizer, epoch, cfg["epoch"], i, datasize, cfg)
-        optimizer.zero_grad()
-        losses.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
-        optimizer.step()
+    for i, data in enumerate(dataloader):
+        os.environ["KINETO_LOG_LEVEL"] = "5"
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                with_flops=True
+            ) as prof:
+            data = utils.to_cuda(data, device)
+            # forward pass
+            model.train()
+            output_list = model(data)
+            additional_loss_item = {}
+            if isinstance(output_list, dict):
+                for k, v in output_list.items():
+                    if "loss" in k:
+                        additional_loss_item[k] = v
+                output_list = output_list["output_list"]
+            target_list = [
+                F.adaptive_avg_pool2d(data["img_gt"], x.shape[-2:]) for x in output_list
+            ]
+            loss_list = utils.loss_compute(output_list, target_list, loss_type)
+            losses = sum(loss_list)
+            if len(additional_loss_item.values()) > 0:
+                losses = losses + sum(additional_loss_item.values())
+
+            lr = utils.adjust_lr(optimizer, epoch, cfg["epoch"], i, datasize, cfg)
+            optimizer.zero_grad()
+            losses.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
+            optimizer.step()
+        flops += sum(evt.flops for evt in prof.events())
+        
+        epoch_end_time = datetime.now()
 
         # compute psnr and msssim
         psnr_list.append(utils.psnr_fn(output_list, target_list))
@@ -93,6 +102,8 @@ def train_one_epoch(
     train_stats = {
         "train_psnr": train_psnr,
         "train_msssim": train_msssim,
+        "train_walltime": (epoch_end_time - epoch_start_time).total_seconds(),
+        "train_flops": flops 
     }
     if hasattr(args, "distributed") and args.distributed:
         train_stats = utils.reduce_dict(train_stats)
@@ -123,7 +134,6 @@ def train_one_epoch(
             f"Train/MSSSIM_{h}X{w}", train_stats["train_msssim"][-1].item(), epoch + 1
         )
         writer.add_scalar("Train/lr", lr, epoch + 1)
-    epoch_end_time = datetime.now()
     print(
         "Time/epoch: \tCurrent:{:.2f} \tAverage:{:.2f}".format(
             (epoch_end_time - epoch_start_time).total_seconds(),

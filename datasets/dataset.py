@@ -27,10 +27,10 @@ class CustomDataSet(Dataset):
 		for i in range(len(frame_idx)):
 			x = frame_idx[i]
 			self.frame_idx.append(float(x) / (len(frame_idx) - 1))
-		self.accum_img_num = np.asfarray(accum_img_num)
+		# self.accum_img_num = np.asfarray(accum_img_num)
 
-		self.height = height
-		self.width = width
+		# self.height = height
+		# self.width = width
 
 	def __len__(self):
 		return len(self.frame_idx)
@@ -57,8 +57,8 @@ class CustomDataSet(Dataset):
 		image_pp = Image.open(img_name_pp).convert("RGB")
 		image_ff = Image.open(img_name_ff).convert("RGB")
 		
-		if image.size != (self.width, self.height):
-			image = image.resize((self.width, self.height))
+		# if image.size != (self.width, self.height):
+		# 	image = image.resize((self.width, self.height))
 
 		tensor_image = self.transform(image)
 		tensor_image_p = self.transform(image_p)

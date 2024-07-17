@@ -1,6 +1,6 @@
 seed: 5
 #----change to your own dataset path----#
-dataset_path: ../UVG/honeybee
+dataset_path: ../UVG/yachtride
 
 dataset_type: all 
 model:
@@ -15,9 +15,9 @@ model:
   diff_dec_stride: [[4,4]]
   diff_dec_padding: [1,1,1]
   conv_type: conv
-  c1: 64
-  d: 16
-  c2: 92 
+  c1: 48 # encoder dimension
+  d: 16 # embedding dimension
+  c2: 82  # channel width of decoder input
   height: 1080
   width: 1920
 train_batchsize: 1
